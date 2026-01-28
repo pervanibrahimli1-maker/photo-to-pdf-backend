@@ -5,19 +5,17 @@ FROM node:18-alpine
 WORKDIR /app
 
 # Package.json faylını və package-lock.json-u kopyalayır
-# Bu addım, yalnız dependencies dəyişdikdə rebuild olunmasını təmin edir (caching üçün)
-COPY backend/package.json ./backend/
-COPY backend/package-lock.json ./backend/
+COPY package.json .
+COPY package-lock.json .
 
 # Dependencies-i quraşdırır
-RUN npm install --prefix ./backend
+RUN npm install
 
 # Tətbiqin qalan hissəsini kopyalayır
 COPY . .
 
-# İşləyən portu açıq qoyur (Render.com bunu avtomatik idarə edir, lakin yaxşı təcrübədir)
+# İşləyən portu açıq qoyur
 EXPOSE 3000
 
 # Serveri işə salmaq üçün əmr
-# package.json-dakı "start" scriptini istifadə edir
-CMD ["npm", "start", "--prefix", "./backend"]
+CMD ["npm", "start"]
