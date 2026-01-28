@@ -9,6 +9,13 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 
 const app = express();
+
+// ===============================================================
+// XƏTANI DÜZƏLDƏN ƏSAS SƏTİR (BURA ƏLAVƏ EDİLDİ)
+// ===============================================================
+// Render, Heroku kimi proksi arxasında olan mühitlərdə IP-ni düzgün oxumaq üçün:
+app.set('trust proxy', 1); 
+
 const port = process.env.PORT || 3000;
 
 // ===============================================================
@@ -19,7 +26,6 @@ const port = process.env.PORT || 3000;
 app.use(helmet());
 
 // 2. Sorğu limitləməsi (Rate Limiting)
-// Bir IP ünvanından 5 dəqiqə ərzində maksimum 100 sorğuya icazə ver
 const apiLimiter = rateLimit({
     windowMs: 5 * 60 * 1000, // 5 dəqiqə
     max: 100, // Hər IP üçün 5 dəqiqədə 100 sorğu
@@ -31,15 +37,14 @@ const apiLimiter = rateLimit({
 // Bütün API sorğularına rate limiting tətbiq et
 app.use(apiLimiter);
 
+// ... (kodun qalan hissəsi eyni qalır)
+
 // 3. CORS ayarları
-// Frontend domenini mühit dəyişənindən götürün (Render.com üçün)
-// Render.com-da bu dəyəri "Environment Variables" bölməsində təyin etməlisiniz:
-// FRONTEND_ORIGIN = https://photo-to-pdf.ct.ws
-const frontendOrigin = process.env.FRONTEND_ORIGIN || 'https://photo-to-pdf.ct.ws'; // Default olaraq daxil edildi
+const frontendOrigin = process.env.FRONTEND_ORIGIN || 'https://photo-to-pdf.ct.ws';
 const allowedOrigins = [
     frontendOrigin,
-    'http://localhost:5500', // Yerli inkişaf üçün
-    'http://127.0.0.1:5500', // Yerli inkişaf üçün
+    'http://localhost:5500',
+    'http://127.0.0.1:5500',
 ];
 
 app.use(cors({
@@ -54,39 +59,31 @@ app.use(cors({
     allowedHeaders: ['Content-Type'],
 }));
 
-
-// Müvəqqəti fayllar üçün qovluq (OS temp qovluğunda)
+// Müvəqqəti fayllar üçün qovluq
 const tempUploadDir = path.join(os.tmpdir(), 'image_to_pdf_uploads');
-// Qovluğun mövcud olmasını təmin et
 if (!fs.existsSync(tempUploadDir)) {
     fs.mkdirSync(tempUploadDir, { recursive: true });
 }
 
-// Multer storage ayarı: Faylları müvəqqəti disqə yazır
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
         cb(null, tempUploadDir);
     },
     filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const uniqueSuffix = Date.now() + '-' + Math.round(1E9 * Math.random());
         const fileExtension = path.extname(file.originalname);
         cb(null, `${file.fieldname}-${uniqueSuffix}${fileExtension}`);
     }
 });
 
-// Multer yükləmə middleware
 const upload = multer({ 
     storage: storage,
     limits: { 
-        fileSize: 5 * 1024 * 1024 * 5, // Hər fayl üçün 25MB limit
-        files: 10 // Tək bir sorğuda maksimum 10 fayla icazə ver
+        fileSize: 25 * 1024 * 1024, 
+        files: 10 
     }, 
     fileFilter: (req, file, cb) => {
-        // Yalnız JPEG, PNG və WebP formatlarına icazə ver
-        if (file.mimetype === 'image/jpeg' || 
-            file.mimetype === 'image/jpg' || 
-            file.mimetype === 'image/png' ||
-            file.mimetype === 'image/webp') { // WebP yoxlamasını əlavə et, lakin embed etməyi qeyd et
+        if (['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(file.mimetype)) {
             cb(null, true);
         } else {
             cb(new Error('Yalnız JPEG, PNG və WebP şəkil fayllarına icazə verilir!'), false);
@@ -94,21 +91,16 @@ const upload = multer({
     }
 });
 
-// Şəkilləri PDF-ə çevirmək üçün POST endpoint-i
 app.post('/convert-to-pdf', upload.array('images'), async (req, res) => {
-    let uploadedFilePaths = []; // Yüklənmiş fayl yollarını saxlamaq üçün
-
+    let uploadedFilePaths = [];
     try {
         if (!req.files || req.files.length === 0) {
             return res.status(400).json({ message: 'Şəkil faylları tapılmadı.' });
         }
 
         const pdfDoc = await PDFDocument.create();
-        const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-
         for (const file of req.files) {
             uploadedFilePaths.push(file.path);
-            
             let image;
             const imageBuffer = fs.readFileSync(file.path);
 
@@ -117,18 +109,11 @@ app.post('/convert-to-pdf', upload.array('images'), async (req, res) => {
                     image = await pdfDoc.embedJpg(imageBuffer);
                 } else if (file.mimetype === 'image/png') {
                     image = await pdfDoc.embedPng(imageBuffer);
-                } else if (file.mimetype === 'image/webp') {
-                    // pdf-lib 1.x WebP-ni birbaşa dəstəkləmir.
-                    // Buraya WebP-ni JPG/PNG-ə çevirmə məntiqi əlavə oluna bilər.
-                    // Hal-hazırda, təhlükəsizlik filtri WebP-ə icazə versə də, çevirmədən keçmir.
-                    console.warn(`WebP şəkil formatı (${file.originalname}) birbaşa PDF-ə daxil edilə bilmədi. Atlandı.`);
-                    continue; // Atla
                 } else {
-                    console.warn(`Dəstəklənməyən şəkil formatı (${file.originalname}) - ${file.mimetype}. Atlandı.`);
-                    continue;
+                    continue; 
                 }
             } catch (embedError) {
-                console.error(`Şəkil embed edilərkən xəta: ${file.originalname} - ${embedError.message}`);
+                console.error(`Embed xətası: ${file.originalname}`, embedError);
                 continue;
             }
 
@@ -145,30 +130,24 @@ app.post('/convert-to-pdf', upload.array('images'), async (req, res) => {
         }
 
         if (pdfDoc.getPageCount() === 0) {
-            return res.status(400).json({ message: 'Heç bir şəkil dəstəklənən formatda deyil və ya çevrilmədi.' });
+            return res.status(400).json({ message: 'Heç bir şəkil çevrilmədi.' });
         }
 
         const pdfBytes = await pdfDoc.save();
-
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', 'attachment; filename="converted_images.pdf"');
         res.send(Buffer.from(pdfBytes));
 
     } catch (error) {
-        console.error('PDF çevirmə zamanı ümumi xəta:', error);
-        res.status(500).json({ message: 'Server xətası: Şəkillər PDF-ə çevrilərkən problem yaşandı.' });
+        console.error('Xəta:', error);
+        res.status(500).json({ message: 'Server xətası baş verdi.' });
     } finally {
         uploadedFilePaths.forEach(filePath => {
-            fs.unlink(filePath, (err) => {
-                if (err) console.error(`Müvəqqəti fayl silinərkən xəta: ${filePath}`, err);
-            });
+            fs.unlink(filePath, (err) => { if (err) console.error(err); });
         });
     }
 });
 
-// Serveri işə sal
 app.listen(port, () => {
     console.log(`Server ${port} portunda işləyir.`);
-    console.log(`Backend ${process.env.NODE_ENV || 'development'} mühitində işə salındı.`);
-    console.log(`CORS allowed origin(s): ${allowedOrigins.join(', ')}`);
 });
