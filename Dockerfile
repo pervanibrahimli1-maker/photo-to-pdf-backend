@@ -7,7 +7,7 @@ WORKDIR /app
 # package.json faylını və package-lock.json-u kopyalayır
 # package-lock.json faylının layihənin kök qovluğunda olduğundan əmin olun!
 COPY package.json .
-COPY package-lock.json .
+COPY .package-lock.json .
 
 # Dependencies-i quraşdırır
 RUN npm install --production
@@ -20,3 +20,4 @@ EXPOSE 3000
 
 # Serveri işə salmaq üçün əmr
 CMD ["npm", "start"]
+
