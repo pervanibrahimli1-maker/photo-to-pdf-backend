@@ -28,7 +28,7 @@ app.use(helmet());
 // 2. Sorğu limitləməsi (Rate Limiting)
 const apiLimiter = rateLimit({
     windowMs: 5 * 60 * 1000, // 5 dəqiqə
-    max: 100, // Hər IP üçün 5 dəqiqədə 100 sorğu
+    max: 50, // Hər IP üçün 5 dəqiqədə 100 sorğu
     message: 'Çoxlu sorğu göndərmisiniz, zəhmət olmasa bir az gözləyin.',
     standardHeaders: true,
     legacyHeaders: false,
@@ -151,3 +151,4 @@ app.post('/convert-to-pdf', upload.array('images'), async (req, res) => {
 app.listen(port, () => {
     console.log(`Server ${port} portunda işləyir.`);
 });
+
