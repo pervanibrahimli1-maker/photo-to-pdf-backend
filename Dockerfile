@@ -4,11 +4,12 @@ FROM node:18-alpine
 # Tətbiq qovluğunu yaradır və ora keçir
 WORKDIR /app
 
-# Package.json faylını və package-lock.json-u kopyalayır
+# package.json faylını kopyalayır
 COPY package.json .
-COPY package-lock.json .
+# package-lock.json-u kopyalama sətrini silirik, çünki onu yükləmək istəmirsiniz.
 
-# Dependencies-i quraşdırır
+# Dependencies-i quraşdırır.
+# package-lock.json olmadığı üçün bu addım ən son uyğun versiyaları yükləyəcək.
 RUN npm install
 
 # Tətbiqin qalan hissəsini kopyalayır
