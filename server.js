@@ -10,12 +10,12 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // InfinityFree-dəki frontend domeniniz (ÖZ DOMENİNİZİ BURAYA DAXİL EDİN!)
-const frontendOrigin = 'YOUR_INFINITYFREE_DOMAIN_HERE'; // Məsələn: 'http://example.great-site.net'
+const frontendOrigin = 'https://photo-to-pdf.ct.ws'; // Məsələn: 'http://example.great-site.net'
 // Və ya inkişaf üçün: 'http://127.0.0.1:5500', 'http://localhost:5500'
 
 // CORS ayarları
 app.use(cors({
-    origin: [frontendOrigin, 'http://127.0.0.1:5500', 'http://localhost:5500'], // Yerli inkişaf və InfinityFree domeninizi əlavə edin
+    origin: [frontendOrigin, 'https://photo-to-pdf.ct.ws', 'http://localhost:5500'], // Yerli inkişaf və InfinityFree domeninizi əlavə edin
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type'],
 }));
@@ -119,5 +119,6 @@ app.post('/convert-to-pdf', upload.array('images'), async (req, res) => {
 
 // Serveri işə sal
 app.listen(port, () => {
-    console.log(`Server http://localhost:${port} ünvanında işləyir.`);
+    console.log(`Server https://photo-to-pdf.ct.ws/${port} ünvanında işləyir.`);
 });
+
