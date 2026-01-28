@@ -4,22 +4,42 @@ const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs'); // Fayl sistem əməliyyatları üçün
+const os = require('os'); // Əməliyyat sistemi üçün (müvəqqəti qovluq yaratmaq üçün)
 
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
-// CORS ayarları (Frontend-dən gələn sorğulara icazə vermək üçün)
+// InfinityFree-dəki frontend domeniniz (ÖZ DOMENİNİZİ BURAYA DAXİL EDİN!)
+const frontendOrigin = 'YOUR_INFINITYFREE_DOMAIN_HERE'; // Məsələn: 'http://example.great-site.net'
+// Və ya inkişaf üçün: 'http://127.0.0.1:5500', 'http://localhost:5500'
+
+// CORS ayarları
 app.use(cors({
-    origin: 'http://127.0.0.1:5500', // Frontend-inizin işlədiyi URL-i buraya daxil edin
+    origin: [frontendOrigin, 'http://127.0.0.1:5500', 'http://localhost:5500'], // Yerli inkişaf və InfinityFree domeninizi əlavə edin
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type'],
 }));
 
-// Müvəqqəti faylları yadda saxlamaq üçün Multer storage ayarı
-const storage = multer.memoryStorage(); // Faylları yaddaşda saxlamaq
+// Müvəqqəti fayllar üçün qovluq
+const tempUploadDir = path.join(os.tmpdir(), 'uploads');
+// Qovluğun mövcud olmasını təmin et
+if (!fs.existsSync(tempUploadDir)) {
+    fs.mkdirSync(tempUploadDir, { recursive: true });
+}
+
+// Multer storage ayarı: Faylları müvəqqəti disqə yazır
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, tempUploadDir);
+    },
+    filename: (req, file, cb) => {
+        cb(null, `${Date.now()}-${file.originalname}`);
+    }
+});
+
 const upload = multer({ 
     storage: storage,
-    limits: { fileSize: 5 * 1024 * 1024 }, // Hər fayl üçün 5MB limit
+    limits: { fileSize: 5 * 1024 * 1024 * 10 }, // Hər fayl üçün 50MB limit
     fileFilter: (req, file, cb) => {
         if (file.mimetype.startsWith('image/')) {
             cb(null, true);
@@ -31,49 +51,46 @@ const upload = multer({
 
 // Şəkilləri PDF-ə çevirmək üçün POST endpoint-i
 app.post('/convert-to-pdf', upload.array('images'), async (req, res) => {
-    // 'images' - frontend-də FormData.append('images', file) istifadə olunduğu ad
+    let uploadedFilePaths = []; // Yüklənmiş fayl yollarını saxlamaq üçün
+
     try {
         if (!req.files || req.files.length === 0) {
             return res.status(400).json({ message: 'Şəkil faylları tapılmadı.' });
         }
 
         const pdfDoc = await PDFDocument.create();
-        const font = await pdfDoc.embedFont(StandardFonts.Helvetica); // Mətn əlavə etmək üçün font
+        const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
         for (const file of req.files) {
+            uploadedFilePaths.push(file.path); // Fayl yolunu qeyd et
+            
             let image;
-            const imageBuffer = file.buffer; // Multer faylı buffer olaraq verir
+            const imageBuffer = fs.readFileSync(file.path); // Faylı oxuyaraq buffer al
 
-            // Şəkil tipini yoxla
-            if (file.mimetype === 'image/jpeg' || file.mimetype === 'image/jpg') {
-                image = await pdfDoc.embedJpg(imageBuffer);
-            } else if (file.mimetype === 'image/png') {
-                image = await pdfDoc.embedPng(imageBuffer);
-            } else {
-                // Digər şəkil formatlarını dəstəkləmək istəyirsinizsə, burada əlavə edə bilərsiniz
-                console.warn(`Dəstəklənməyən şəkil formatı: ${file.mimetype}. Bu şəkil atlanacaq.`);
-                continue; // Bu şəkli atla və növbətiyə keç
+            try {
+                if (file.mimetype === 'image/jpeg' || file.mimetype === 'image/jpg') {
+                    image = await pdfDoc.embedJpg(imageBuffer);
+                } else if (file.mimetype === 'image/png') {
+                    image = await pdfDoc.embedPng(imageBuffer);
+                } else {
+                    console.warn(`Dəstəklənməyən şəkil formatı: ${file.mimetype}. Bu şəkil atlanacaq.`);
+                    continue;
+                }
+            } catch (embedError) {
+                console.error(`Şəkil embed edilərkən xəta: ${file.originalname}`, embedError);
+                continue;
             }
 
-            const page = pdfDoc.addPage(); // Hər şəkil üçün yeni səhifə
+            const page = pdfDoc.addPage();
             const { width, height } = page.getSize();
-            const imageDims = image.scaleToFit(width - 50, height - 50); // Şəkli səhifəyə uyğunlaşdır
+            const imageDims = image.scaleToFit(width - 50, height - 50); 
 
             page.drawImage(image, {
-                x: page.getWidth() / 2 - imageDims.width / 2,
-                y: page.getHeight() / 2 - imageDims.height / 2,
+                x: (page.getWidth() - imageDims.width) / 2,
+                y: (page.getHeight() - imageDims.height) / 2,
                 width: imageDims.width,
                 height: imageDims.height,
             });
-
-            // Fayl adını hər səhifənin altına əlavə etmək istəyirsinizsə:
-            // page.drawText(file.originalname, {
-            //     x: 25,
-            //     y: 25,
-            //     font,
-            //     size: 12,
-            //     color: rgb(0, 0, 0),
-            // });
         }
 
         if (pdfDoc.getPageCount() === 0) {
@@ -87,8 +104,16 @@ app.post('/convert-to-pdf', upload.array('images'), async (req, res) => {
         res.send(Buffer.from(pdfBytes));
 
     } catch (error) {
-        console.error('PDF çevirmə zamanı xəta:', error);
+        console.error('PDF çevirmə zamanı ümumi xəta:', error);
         res.status(500).json({ message: 'Server xətası: Şəkillər PDF-ə çevrilərkən problem yaşandı.' });
+    } finally {
+        // Çevrilmə bitdikdən və ya xəta baş verdikdən sonra yüklənmiş faylları sil
+        uploadedFilePaths.forEach(filePath => {
+            fs.unlink(filePath, (err) => {
+                if (err) console.error(`Müvəqqəti fayl silinərkən xəta: ${filePath}`, err);
+                // else console.log(`Müvəqqəti fayl silindi: ${filePath}`);
+            });
+        });
     }
 });
 
